@@ -1,0 +1,1340 @@
+# Directed digital evolution experiment
+
+Supplemental information and data analyses for the initial (baseline) directed evolution modeling experiment.
+
+## Overview
+
+```{r}
+experiment_slug <- "2021-11-11-selection"
+
+working_directory <- paste0("experiments/",experiment_slug,"/analysis/")
+```
+
+## Analysis dependencies
+
+Load all required R libraries
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(cowplot)
+library(RColorBrewer)
+library(khroma)
+source("https://gist.githubusercontent.com/benmarwick/2a1bb0133ff568cbe28d/raw/fb53bd97121f7f9ce947837ef1a4c65a73bffb3f/geom_flat_violin.R")
+```
+
+These analyses were knit with the following environment:
+
+```{r}
+print(version)
+```
+
+## Setup
+
+Load experiment summary data.
+
+```{r}
+exp_summary_data_loc <- paste0(working_directory,"data/experiment_summary.csv")
+exp_summary_data <- read.csv(exp_summary_data_loc, na.strings="NONE")
+
+exp_summary_data$SELECTION_METHOD <- factor(
+  exp_summary_data$SELECTION_METHOD,
+  levels=c(
+    "elite",
+    "elite-10",
+    "tournament",
+    "lexicase",
+    "non-dominated-elite",
+    "random",
+    "none"
+  ),
+  labels=c(
+    "elite",
+    "elite-10",
+    "tourn",
+    "lex",
+    "nde",
+    "random",
+    "none"
+  )
+)
+
+```
+
+Load time series data.
+
+```{r}
+times_series_data_loc <- paste0(working_directory,"data/evaluation_time_series_corrected.csv")
+times_series_data <- read.csv(times_series_data_loc, na.strings="NONE")
+
+# Specify experimental condition for each datum.
+times_series_data$SELECTION_METHOD <- factor(
+  times_series_data$SELECTION_METHOD,
+  levels=c(
+    "elite",
+    "elite-10",
+    "tournament",
+    "lexicase",
+    "non-dominated-elite",
+    "non-dominated-tournament",
+    "random",
+    "none"
+  ),
+  labels=c(
+    "elite",
+    "elite-10",
+    "tourn",
+    "lex",
+    "nde",
+    "ndt",
+    "random",
+    "none"
+  )
+)
+
+times_series_data$epoch_offset <- times_series_data$epoch+1
+```
+
+Load task coverage per population data.
+
+```{r}
+task_coverage_per_pop_data_loc <- paste0(working_directory,"data/max_coverage_per_pop_cnt.csv")
+task_coverage_per_pop_data <- read.csv(task_coverage_per_pop_data_loc, na.strings="NONE")
+
+# Specify experimental condition for each datum.
+task_coverage_per_pop_data$SELECTION_METHOD <- factor(
+  task_coverage_per_pop_data$SELECTION_METHOD,
+  levels=c(
+    "elite",
+    "elite-10",
+    "tournament",
+    "lexicase",
+    "non-dominated-elite",
+    "non-dominated-tournament",
+    "random",
+    "none"
+  ),
+  labels=c(
+    "elite",
+    "elite-10",
+    "tourn",
+    "lex",
+    "nde",
+    "ndt",
+    "random",
+    "none"
+  )
+)
+```
+
+Miscellaneous setup
+
+```{r}
+# Configure our default graphing theme
+theme_set(theme_cowplot())
+# Palette
+scale_fill_fun <- scale_fill_bright
+scale_color_fun <- scale_color_bright
+alpha <- 0.05
+# Create a directory to store plots
+plot_directory <- paste0(working_directory, "plots/")
+dir.create(plot_directory, showWarnings=FALSE)
+
+p_label <- function(p_value) {
+  threshold = 0.0001
+  if (p_value < threshold) {
+    return(paste0("p < ", threshold))
+  } else {
+    return(paste0("p = ", p_value))
+  }
+}
+
+
+selection_method_breaks <- c("elite", "elite-10", "tourn", "lex", "nde", "random", "none")
+selection_method_labels <- c("ELITE", "TOP-10", "TOURN", "LEX", "NDE", "RAND", "NONE")
+```
+
+## Best single-population task coverage
+
+Best single-population task coverage at the end of the experiment.
+
+```{r}
+max_trait_cov_fig <-
+  ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=max_trait_coverage,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8,
+    adjust=1.5
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(height=0.1, width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="Task Coverage",
+    limits=c(-0.5,18.5),
+    breaks=seq(0,18,2)
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun() +
+  scale_color_fun() +
+  theme(
+    legend.position="none"
+  )
+
+max_trait_cov_fig
+ggsave(
+  plot=max_trait_cov_fig,
+  paste0(plot_directory, "max_trait_coverage.pdf")
+)
+```
+
+Statistical results:
+
+```{r}
+kruskal.test(
+  formula=max_trait_coverage~SELECTION_METHOD,
+  data=exp_summary_data
+)
+
+# Kruskal-wallis is significant, so we do a post-hoc wilcoxon rank-sum.
+pairwise.wilcox.test(
+  x=exp_summary_data$max_trait_coverage,
+  g=exp_summary_data$SELECTION_METHOD,
+  p.adjust.method="bonferroni",
+)
+```
+
+### Best single-population task coverage time series
+
+To speed up graphing, we plot a low-resolution version of the time series.
+
+```{r}
+max_trait_cov_ot_fig <-
+  ggplot(
+    # times_series_data,
+    filter(times_series_data, (epoch_offset%%100)==0 | epoch_offset==1),
+    aes(
+      x=epoch_offset,
+      y=max_trait_coverage,
+      fill=SELECTION_METHOD,
+      color=SELECTION_METHOD
+    )
+  ) +
+  stat_summary(geom="line", fun=mean) +
+  stat_summary(
+    geom="ribbon",
+    fun.data="mean_cl_boot",
+    fun.args=list(conf.int=0.95),
+    alpha=0.2,
+    linetype=0
+  ) +
+  scale_x_continuous(
+    name="Cycles"
+  ) +
+  scale_y_continuous(
+    name="Task Coverage",
+    limits=c(-0.5,18.5),
+    breaks=seq(0,18,2)
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  theme(
+    legend.position="none"
+  )
+max_trait_cov_ot_fig
+
+ggsave(
+  plot=max_trait_cov_ot_fig,
+  filename=paste0(plot_directory, "2021-11-11-best-pop-task-cov-ts.pdf"),
+  width=10,
+  height=6
+)
+```
+
+#### First 30 cycles of the experiment
+
+```{r}
+max_trait_cov_ot_early_fig <-
+  ggplot(
+    # times_series_data,
+    filter(times_series_data, (epoch_offset <= 30)),
+    aes(
+      x=epoch_offset,
+      y=max_trait_coverage,
+      fill=SELECTION_METHOD,
+      color=SELECTION_METHOD
+    )
+  ) +
+  stat_summary(geom="line", fun=mean) +
+  stat_summary(
+    geom="ribbon",
+    fun.data="mean_cl_boot",
+    fun.args=list(conf.int=0.95),
+    alpha=0.2,
+    linetype=0
+  ) +
+  scale_x_continuous(
+    name="Cycles"
+  ) +
+  scale_y_continuous(
+    name="Task Coverage",
+    limits=c(-0.5,18.5),
+    breaks=seq(0,18,2)
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  theme(
+    legend.position="bottom"
+  )
+max_trait_cov_ot_early_fig
+
+ggsave(
+  filename=paste0(plot_directory, "2021-11-11-best-pop-task-cov-ts-early.pdf"),
+  width=10,
+  height=6
+)
+```
+
+After just 10 cycles, we observed significant gains from using NDE and LEX selection protocols.
+
+```{r}
+early_data <- filter(times_series_data, epoch_offset==10)
+kruskal.test(
+  formula=max_trait_coverage~SELECTION_METHOD,
+  data=early_data
+)
+
+# Kruskal-wallis is significant, so we do a post-hoc wilcoxon rank-sum.
+pairwise.wilcox.test(
+  x=early_data$max_trait_coverage,
+  g=early_data$SELECTION_METHOD,
+  p.adjust.method="bonferroni",
+)
+```
+
+## Metapopulation task coverage
+
+Metapopulation task coverage at the end of the experiment.
+
+```{r}
+total_trait_cov_fig <-
+  ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=total_trait_coverage,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8,
+    adjust=1.5
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(height=0.1, width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="Task Coverage",
+    limits=c(-0.5,18.5),
+    breaks=seq(0,18,2)
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun(
+  ) +
+  scale_color_fun(
+  ) +
+  theme(
+    legend.position="none"
+  )
+
+total_trait_cov_fig
+ggsave(
+  plot=total_trait_cov_fig,
+  paste0(plot_directory, "2021-11-11-metapop-task-cov.pdf")
+)
+```
+
+Statistical results:
+
+```{r}
+kruskal.test(
+  formula=total_trait_coverage~SELECTION_METHOD,
+  data=exp_summary_data
+)
+
+# Kruskal-wallis is significant, so we do a post-hoc wilcoxon rank-sum.
+pairwise.wilcox.test(
+  x=exp_summary_data$total_trait_coverage,
+  g=exp_summary_data$SELECTION_METHOD,
+  p.adjust.method="bonferroni",
+)
+
+# All sig p<0.5, except tourn vs none
+```
+
+### Metapopulation task coverage time series
+
+To speed up plotting, we graph a low-resolution version of this time series.
+
+```{r}
+metapop_task_cov_ot_fig <-
+  ggplot(
+    # times_series_data,
+    filter(times_series_data, (epoch_offset%%100)==0 | epoch_offset==1),
+    aes(
+      x=epoch_offset,
+      y=total_trait_coverage,
+      fill=SELECTION_METHOD,
+      color=SELECTION_METHOD
+    )
+  ) +
+  stat_summary(geom="line", fun=mean) +
+  stat_summary(
+    geom="ribbon",
+    fun.data="mean_cl_boot",
+    fun.args=list(conf.int=0.95),
+    alpha=0.2,
+    linetype=0
+  ) +
+    scale_x_continuous(
+    name="Cycles"
+  ) +
+  scale_y_continuous(
+    name="Task Coverage",
+    limits=c(-0.5,18.5),
+    breaks=seq(0,18,2)
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  theme(
+    legend.position="bottom"
+  )
+metapop_task_cov_ot_fig
+ggsave(
+  plot=metapop_task_cov_ot_fig,
+  filename=paste0(plot_directory, "2021-11-11-metapop-task-cov-ts.pdf"),
+  width=10,
+  height=6
+)
+```
+
+#### First 30 cycles of the experiment
+
+```{r}
+metapop_task_cov_ot_early_fig <-
+  ggplot(
+    # times_series_data,
+    filter(times_series_data, (epoch_offset <= 30)),
+    aes(
+      x=epoch_offset,
+      y=total_trait_coverage,
+      fill=SELECTION_METHOD,
+      color=SELECTION_METHOD
+    )
+  ) +
+  stat_summary(geom="line", fun=mean) +
+  stat_summary(
+    geom="ribbon",
+    fun.data="mean_cl_boot",
+    fun.args=list(conf.int=0.95),
+    alpha=0.2,
+    linetype=0
+  ) +
+  scale_x_continuous(
+    name="Cycles"
+  ) +
+  scale_y_continuous(
+    name="Task Coverage",
+    limits=c(-0.5,18.5),
+    breaks=seq(0,18,2)
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  theme(
+    legend.position="bottom"
+  )
+metapop_task_cov_ot_early_fig
+
+ggsave(
+  filename=paste0(plot_directory, "2021-11-11-metapop-task-cov-ts-early.pdf"),
+  width=10,
+  height=6
+)
+```
+
+After just 10 cycles, we observed significant gains from using NDE and LEX selection protocols.
+
+```{r}
+early_data <- filter(times_series_data, epoch_offset==10)
+kruskal.test(
+  formula=total_trait_coverage~SELECTION_METHOD,
+  data=early_data
+)
+
+# Kruskal-wallis is significant, so we do a post-hoc wilcoxon rank-sum.
+pairwise.wilcox.test(
+  x=early_data$total_trait_coverage,
+  g=early_data$SELECTION_METHOD,
+  p.adjust.method="bonferroni",
+)
+```
+
+## Metapopulation task profile diversity
+
+We measured the "phenotypic" diversity within evolved metapopulations in three ways:
+
+1. the number of task profiles (richness)
+2. the spread of task profiles as the average cosine distance from the centroid profile
+3. the Shannon entropy of task profiles
+
+### Number of different task profiles
+
+```{r}
+num_pop_task_profiles_fig <-
+  ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=num_pop_trait_profiles,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(height=0, width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="# Different Task Profiles"
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun(
+  ) +
+  scale_color_fun(
+  ) +
+  theme(
+    legend.position="none"
+  )
+num_pop_task_profiles_fig
+ggsave(
+  plot=num_pop_task_profiles_fig,
+  paste0(plot_directory, "2021-11-11-num-task-profiles.pdf")
+)
+```
+
+Statistical results:
+
+```{r}
+kruskal.test(
+  formula=num_pop_trait_profiles~SELECTION_METHOD,
+  data=exp_summary_data
+)
+
+# Kruskal-wallis is significant, so we do a post-hoc wilcoxon rank-sum.
+pairwise.wilcox.test(
+  x=exp_summary_data$num_pop_trait_profiles,
+  g=exp_summary_data$SELECTION_METHOD,
+  p.adjust.method="bonferroni",
+)
+```
+
+#### Number of different task profiles over time
+
+```{r}
+num_task_profiles_ot_fig <-
+  ggplot(
+    filter(times_series_data, (updates_elapsed%%10000)==0 | updates_elapsed==1),
+    aes(
+      x=updates_elapsed,
+      y=num_pop_trait_profiles,
+      fill=SELECTION_METHOD,
+      color=SELECTION_METHOD
+    )
+  ) +
+  stat_summary(geom="line", fun=mean) +
+  stat_summary(
+    geom="ribbon",
+    fun.data="mean_cl_boot",
+    fun.args=list(conf.int=0.95),
+    alpha=0.2,
+    linetype=0
+  ) +
+  scale_x_continuous(
+    name="Updates elapsed"
+  ) +
+  scale_y_continuous(
+    name="# Different Task Profiles"
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  theme(
+    legend.position="bottom"
+  )
+num_task_profiles_ot_fig
+ggsave(
+  num_task_profiles_ot_fig,
+  filename=paste0(plot_directory, "2021-11-11-num-task-profiles-ts.png"),
+  width=10,
+  height=6
+)
+```
+
+### Task profile spread
+
+```{r}
+task_profile_spread_fig <-
+  ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=avg_cosine_dist_from_centroid,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(height=0, width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="Avg. Task Spread"
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun(
+  ) +
+  scale_color_fun(
+  ) +
+  theme(
+    legend.position="none"
+  )
+task_profile_spread_fig
+ggsave(
+  plot=task_profile_spread_fig,
+  paste0(plot_directory, "2021-11-11-task-profile-spread.pdf")
+)
+```
+
+Statistical results:
+
+```{r}
+kruskal.test(
+  formula=avg_cosine_dist_from_centroid~SELECTION_METHOD,
+  data=exp_summary_data
+)
+
+# Kruskal-wallis is significant, so we do a post-hoc wilcoxon rank-sum.
+pairwise.wilcox.test(
+  x=exp_summary_data$avg_cosine_dist_from_centroid,
+  g=exp_summary_data$SELECTION_METHOD,
+  p.adjust.method="bonferroni",
+)
+```
+
+### Task profile entropy
+
+```{r}
+ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=pop_trait_profile_entropy,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(height=0, width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="Shannon entropy of task profiles"
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun(
+  ) +
+  scale_color_fun(
+  ) +
+  theme(
+    legend.position="none"
+  )
+
+ggsave(
+  paste0(plot_directory, "2021-11-11-task-profile-entropy.pdf")
+)
+```
+
+Statistical results:
+
+```{r}
+kruskal.test(
+  formula=pop_trait_profile_entropy~SELECTION_METHOD,
+  data=exp_summary_data
+)
+
+pairwise.wilcox.test(
+  x=exp_summary_data$pop_trait_profile_entropy,
+  g=exp_summary_data$SELECTION_METHOD,
+  p.adjust.method="bonferroni",
+)
+```
+
+#### Task entropy over time
+
+```{r}
+ggplot(
+    filter(times_series_data, (updates_elapsed%%10000)==0 | updates_elapsed==1),
+    aes(
+      x=updates_elapsed,
+      y=pop_trait_profile_entropy,
+      fill=SELECTION_METHOD,
+      color=SELECTION_METHOD
+    )
+  ) +
+  stat_summary(geom="line", fun=mean) +
+  stat_summary(
+    geom="ribbon",
+    fun.data="mean_cl_boot",
+    fun.args=list(conf.int=0.95),
+    alpha=0.2,
+    linetype=0
+  ) +
+  scale_x_continuous(
+    name="Updates elapsed"
+  ) +
+  scale_y_continuous(
+    name="Task profile entropy"
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  theme(
+    legend.position="bottom"
+  )
+
+ggsave(
+  filename=paste0(plot_directory, "2021-11-11-pop-trait-profile-entropy-ts.png"),
+  width=10,
+  height=6
+)
+```
+
+## Task coverage per N populations
+
+We analyzed the (maximum) number of tasks added to metapopulation task coverage for a given number (N) of member populations considered.
+That is, for each N, we solved the maximum set coverage problem for task coverage: what is the maximum number of tasks that can be covered given N populations from this metapopulation?
+
+```{r}
+ggplot(
+    task_coverage_per_pop_data,
+    aes(
+      x=n_pops,
+      y=max_tasks_covered,
+      fill=SELECTION_METHOD,
+      color=SELECTION_METHOD
+    )
+  ) +
+  stat_summary(geom="line", fun=mean) +
+  stat_summary(
+    geom="ribbon",
+    fun.data="mean_cl_boot",
+    fun.args=list(conf.int=0.95),
+    alpha=0.2,
+    linetype=0
+  ) +
+  scale_y_continuous(
+    name="Maximum task coverage"
+  ) +
+  scale_x_continuous(
+    name="Number of populations",
+    limits=c(0, 15)
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  theme(
+    legend.position="bottom"
+  )
+
+ggsave(
+  paste0(plot_directory, "2021-11-11-task-cov-per-n-pops.pdf"),
+  width=10,
+  height=6
+)
+```
+
+```{r}
+ggplot(
+    filter(
+      task_coverage_per_pop_data,
+      n_pops > 0 & n_pops <= 5
+    ),
+    aes(
+      x=SELECTION_METHOD,
+      y=max_tasks_covered,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(height=0, width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="Maximum task coverage"
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  facet_wrap(
+    ~n_pops,
+    nrow=1,
+    labeller=label_both
+  ) +
+  theme(
+    legend.position="bottom",
+    axis.text.x = element_blank()
+  )
+
+ggsave(
+  paste0(plot_directory, "2021-11-11-task-cov-per-n-pops-alt.pdf"),
+  width=10,
+  height=6
+)
+```
+
+## Average number of different populations selected per generation
+
+```{r}
+ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=avg_unique_selected,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(height=0, width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="Avg. number selected"
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_color_fun(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  theme(
+    legend.position="none"
+  )
+ggsave(
+  paste0(plot_directory, "2021-11-11-num-selected.pdf")
+)
+```
+
+```{r}
+mean(filter(exp_summary_data, SELECTION_METHOD=="elite")$avg_unique_selected)
+mean(filter(exp_summary_data, SELECTION_METHOD=="elite-10")$avg_unique_selected)
+mean(filter(exp_summary_data, SELECTION_METHOD=="tourn")$avg_unique_selected)
+mean(filter(exp_summary_data, SELECTION_METHOD=="nde")$avg_unique_selected)
+mean(filter(exp_summary_data, SELECTION_METHOD=="lex")$avg_unique_selected)
+mean(filter(exp_summary_data, SELECTION_METHOD=="random")$avg_unique_selected)
+```
+
+### Entropy of selected population IDs
+
+```{r}
+ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=avg_entropy_selected,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(height=0, width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_fill_fun(
+  ) +
+  scale_color_fun(
+  ) +
+  theme(
+    legend.position="none"
+  )
+```
+
+## Average number of organisms in populations at end of maturation period
+
+```{r}
+ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=avg_num_orgs,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="Average number of organisms",
+    limits=c(950, 1000)
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun(
+  ) +
+  scale_color_fun(
+  ) +
+  theme(
+    legend.position="none"
+  )
+
+ggsave(
+  paste0(plot_directory, "2021-11-11-num-orgs.pdf")
+)
+```
+
+## Average generations per maturation period
+
+```{r}
+ggplot(
+    exp_summary_data,
+    aes(
+      x=SELECTION_METHOD,
+      y=avg_gens,
+      fill=SELECTION_METHOD
+    )
+  ) +
+  geom_flat_violin(
+    position = position_nudge(x = .2, y = 0),
+    alpha = .8
+  ) +
+  geom_point(
+    mapping=aes(color=SELECTION_METHOD),
+    position = position_jitter(width = .15),
+    size = .5,
+    alpha = 0.8
+  ) +
+  geom_boxplot(
+    width = .1,
+    outlier.shape = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(
+    name="Average generations per maturation period"
+  ) +
+  scale_x_discrete(
+    name="Selection Method",
+    breaks=selection_method_breaks,
+    labels=selection_method_labels
+  ) +
+  scale_fill_fun(
+  ) +
+  scale_color_fun(
+  ) +
+  theme(
+    legend.position="none"
+  )
+
+ggsave(
+  paste0(plot_directory, "2021-11-11-avg-gens.pdf")
+)
+
+median(exp_summary_data$total_gens_approx) # Used for determining how many generations to run EC for
+
+```
+
+## Representative task profiles
+
+Visualized task profiles of two example metapopulations.
+
+Elite selection
+
+```{r}
+knitr::include_graphics("https://raw.githubusercontent.com/amlalejini/directed-digital-evolution/main/docs/media/metapop-profiles/profile_70007_elite.png")
+```
+
+Lexicase selection
+
+```{r}
+knitr::include_graphics("https://raw.githubusercontent.com/amlalejini/directed-digital-evolution/main/docs/media/metapop-profiles/profile_70110_lex.png")
+```
+
+## Manuscript figures
+
+Without time series:
+
+```{r}
+grid <- plot_grid(
+  max_trait_cov_fig +
+    theme(
+      axis.title.x=element_blank(),
+      axis.text=element_text(size=10),
+      plot.title=element_text(size=12),
+      axis.text.x = element_text(size = 9),
+      axis.title.y = element_text(size = 10)
+    ) +
+    ggtitle("Best population task coverage"),
+  total_trait_cov_fig +
+    theme(
+      axis.title.x=element_blank(),
+      plot.title=element_text(size=12),
+      axis.text=element_text(size=10),
+      axis.text.x = element_text(size = 9),
+      axis.title.y = element_text(size = 10)
+    ) +
+    ggtitle("Metapopulation task coverage"),
+  num_pop_task_profiles_fig +
+    theme(
+      axis.text=element_text(size=10),
+      plot.title=element_text(size=12),
+      axis.text.x = element_text(size = 9),
+      axis.title.y = element_text(size = 10)
+    ) +
+    ggtitle("Diversity of task profiles"),
+  task_profile_spread_fig +
+    theme(
+      axis.text=element_text(size=10),
+      plot.title=element_text(size=12),
+      axis.text.x = element_text(size = 9),
+      axis.title.y = element_text(size = 10)
+    ) +
+    ggtitle("Spread of task profiles"),
+  nrow=2,
+  ncol=2,
+  labels="auto"
+)
+grid
+
+save_plot(
+  filename=paste0(plot_directory, "2021-11-11-selection-figure.pdf"),
+  plot=grid,
+  base_height=5,
+  base_asp=2.5,
+  dpi=600
+)
+```
+
+With time series:
+
+```{r}
+legend <- cowplot::get_legend(
+    max_trait_cov_ot_fig +
+      guides(
+        color=guide_legend(nrow=1),
+        fill=guide_legend(nrow=1)
+      ) +
+      theme(
+        legend.position = "bottom",
+        legend.box="horizontal",
+        legend.justification="center"
+      )
+  )
+
+max_trait_cov_row <- plot_grid(
+  max_trait_cov_ot_fig +
+    ggtitle("Best population task coverage (over time)") +
+    theme(
+      legend.position="none"
+      # plot.title=element_text(size=12),
+      # axis.text=element_text(size=10),
+      # axis.text.x = element_text(size = 9),
+      # axis.title.y = element_text(size = 10)
+    ),
+  max_trait_cov_fig +
+    ggtitle("Best population task coverage (final)"),
+    theme(
+      legend.position="none"
+      # plot.title=element_text(size=12),
+      # axis.text=element_text(size=10),
+      # axis.text.x = element_text(size = 9),
+      # axis.title.y = element_text(size = 10)
+    ),
+  nrow=1,
+  ncol=2,
+  align="h",
+  labels=c("a", "b")
+  # rel_widths=c(3,2),
+)
+# max_trait_cov_row
+
+total_trait_cov_row <- plot_grid(
+  metapop_task_cov_ot_fig +
+    ggtitle("Metapopulation task coverage (over time)") +
+    theme(
+      legend.position="none"
+      # plot.title=element_text(size=12),
+      # axis.text=element_text(size=10),
+      # axis.text.x = element_text(size = 9),
+      # axis.title.y = element_text(size = 10)
+    ),
+  total_trait_cov_fig +
+    ggtitle("Metapopulation task coverage (final)"),
+    theme(
+      legend.position="none"
+      # plot.title=element_text(size=12),
+      # axis.text=element_text(size=10),
+      # axis.text.x = element_text(size = 9),
+      # axis.title.y = element_text(size = 10)
+    ),
+  nrow=1,
+  ncol=2,
+  align="h",
+  labels=c("c", "d")
+  # rel_widths=c(3,2),
+)
+# total_trait_cov_row
+
+diversity_row <-  plot_grid(
+  num_pop_task_profiles_fig +
+    ggtitle("Diversity of task profiles") +
+    theme(
+      legend.position="none"
+      # plot.title=element_text(size=12),
+      # axis.text=element_text(size=10),
+      # axis.text.x = element_text(size = 9),
+      # axis.title.y = element_text(size = 10)
+    ),
+  task_profile_spread_fig +
+    ggtitle("Spread of task profiles"),
+    theme(
+      legend.position="none"
+      # plot.title=element_text(size=12),
+      # axis.text=element_text(size=10),
+      # axis.text.x = element_text(size = 9),
+      # axis.title.y = element_text(size = 10)
+    ),
+  nrow=1,
+  ncol=2,
+  align="h",
+  labels=c("e", "f")
+  # rel_widths=c(3,2),
+)
+# diversity_row
+
+grid <- plot_grid(
+  max_trait_cov_row,
+  total_trait_cov_row,
+  diversity_row,
+  legend,
+  nrow=4,
+  ncol=1,
+  rel_heights=c(1, 1, 1, 0.1)
+
+)
+grid
+
+save_plot(
+  filename=paste0(plot_directory, "2021-11-11-selection-figure-with-timeseries.pdf"),
+  plot=grid,
+  base_width=12,
+  base_height=10,
+  # base_asp=1.6,
+  dpi=600
+)
+```
+

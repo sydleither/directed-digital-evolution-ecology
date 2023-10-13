@@ -742,8 +742,16 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
   std::function<void(size_t)> run_world = [this](size_t world_id) {
     worlds[world_id]->SetEpoch(cur_epoch);
     for (size_t u = 0; u <= config.UPDATES_PER_EPOCH(); u++) {
-      worlds[world_id]->RunStep();
-      // const bool record_update = config.OUTPUT_COLLECT_WORLD_UPDATE_SUMMARY() && (!(u % config.OUTPUT_SUMMARY_UPDATE_RESOLUTION()) || (u == config.UPDATES_PER_EPOCH()));
+      if (u == config.UPDATES_PER_EPOCH()) { //Sydney
+        std::map<size_t, int> offspring = worlds[world_id]->RunStepWithOffspringTracking();
+        std::cout << "  " << worlds[world_id]->GetName() << std::endl;
+        for(auto& [key, val] : offspring){
+          std::cout << "    " << key << " " << val << std::endl;
+        }
+      }
+      else {
+        worlds[world_id]->RunStep();
+      }
       worlds[world_id]->Update();
     }
   };
@@ -790,7 +798,6 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
       std::cout << "Running world " << world_ptr->GetName() << std::endl;
       world_ptr->SetEpoch(cur_epoch);
       for (size_t u = 0; u <= config.UPDATES_PER_EPOCH(); u++) {
-        world_ptr->RunStep();
         const bool record_update = config.OUTPUT_COLLECT_WORLD_UPDATE_SUMMARY() && (!(u % config.OUTPUT_SUMMARY_UPDATE_RESOLUTION()) || (u == config.UPDATES_PER_EPOCH()));
         if (record_update) {
           world_summary_file->Update(world_ptr);
@@ -800,7 +807,6 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
     }
     ///////////////////////////////////////////////
     #endif //DIRDEVO_THREADING
-
 
     // Do evaluation (could move this into previous loop if I don't add anything else here that requires all worlds to have been run)
     for (size_t world_id = 0; world_id < worlds.size(); ++world_id) {

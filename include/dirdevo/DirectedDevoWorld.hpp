@@ -299,6 +299,9 @@ public:
   /// Run world one step (update) forward
   void RunStep();
 
+  /// Sydney: run world one step (update) forward and return how many offspring each organism had
+  std::map<size_t, int> RunStepWithOffspringTracking();
+
   /// Evaluate the world (make sure task performance is current)
   void Evaluate();
 
@@ -430,6 +433,61 @@ void DirectedDevoWorld<ORG,TASK>::RunStep() {
   task.OnWorldUpdate(GetUpdate()); // Guarantee that this is called before externally-attached on update functions
   if (track_systematics) shared_systematics_wrapper.Update();
   // this->Update(); // <- MANAGED BY THE EXPERIMENT
+}
+
+//Sydney
+template<typename ORG, typename TASK>
+std::map<size_t, int> DirectedDevoWorld<ORG,TASK>::RunStepWithOffspringTracking() {
+  std::map<size_t, int> num_offspring;
+
+  // Tell task that we're about to run an update
+  task.OnBeforeWorldUpdate(GetUpdate());
+
+  // Check assumptions about the state of the world.
+  const size_t num_orgs = this->GetNumOrgs();
+  extinct = !(bool)num_orgs;
+  if (extinct) {
+    return num_offspring;  // Sydney: If there are no organisms alive, return empty map.
+  }
+
+  // --- Beyond this point: assume that the scheduler weights are current and up-to-date ---
+  // Compute how many organism steps we can dish out for this world update!
+  const size_t org_step_budget = num_orgs*avg_org_steps_per_update;
+  for (size_t step = 0; step < org_step_budget; ++step) {
+    // Schedule someone to take a step.
+    emp_assert(scheduler.GetWeightMap().GetWeight() > 0, step, this->GetNumOrgs());
+    const size_t org_id = scheduler.GetRandom(); // This should reweight the scheduler automatically.
+    auto & org = this->GetOrg(org_id);
+    // Step organism forward
+    task.BeforeOrgProcessStep(org);
+    org.ProcessStep(*this);
+    task.AfterOrgProcessStep(org);
+    // Should organism reproduce?
+    if (org.GetReproReady()) {
+      auto offspring_pos = this->DoBirth(org.GetGenome(), org_id, 1);
+      // If org_id is not in the num_offspring map, add it, else add 1
+      if(num_offspring.find(org_id) == num_offspring.end()){
+          num_offspring.insert({org_id, 1});
+      }
+      else{
+        num_offspring[org_id] += 1;
+      }
+      // If this organism's offspring stomped all over it, we should jump over to the next iteration of the loop
+      if (offspring_pos.GetIndex() == org_id) continue;
+    }
+    // should this organism die?
+    if (org.GetDead()) {
+      this->DoDeath({org_id});
+      // if everything is dead, break out of this loop
+      if (!this->GetNumOrgs()) break;
+    }
+  }
+
+  // Update the world
+  task.OnWorldUpdate(GetUpdate()); // Guarantee that this is called before externally-attached on update functions
+  if (track_systematics) shared_systematics_wrapper.Update();
+
+  return num_offspring;
 }
 
 template<typename ORG, typename TASK>

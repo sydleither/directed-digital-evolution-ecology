@@ -1,0 +1,20 @@
+#!/bin/bash
+###############################################################
+#SBATCH --job-name=agg-data
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=8G
+#SBATCH --time=2:00:00
+#SBATCH --account=devolab
+###############################################################
+
+PROJECT_SLUG=2023-10-11-test
+ANALYSIS_DIR=/mnt/home/leithers/community_level_selection/directed-digital-evolution-ecology/ecology-experiments/${PROJECT_SLUG}/analysis
+DATA_DIR=/mnt/gs21/scratch/leithers/community-level-selection/${PROJECT_SLUG}
+
+cd ${ANALYSIS_DIR}
+
+source /mnt/home/leithers/anaconda3/bin/activate cls
+
+python3 aggregate.py --data_dir ${DATA_DIR} --dump ./dump/ --trait_cov_thresh 50 --units epoch --resolution 1

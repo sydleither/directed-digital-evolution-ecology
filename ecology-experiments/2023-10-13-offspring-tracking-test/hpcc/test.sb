@@ -1,0 +1,37 @@
+#!/bin/bash
+
+###############################################################
+#SBATCH --job-name=offspring_test
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=4G
+#SBATCH --time=1-0:00
+#SBATCH --account=ecode
+###############################################################
+
+# Modules to load
+module load GCCcore/9.1.0
+
+# Variables
+FILE_NAME=2023-10-13-offspring-tracking-test
+EXEC=directed-digital-evolution
+CONFIG_DIR=/mnt/home/leithers/community_level_selection/directed-digital-evolution-ecology/ecology-experiments/${FILE_NAME}/hpcc/config
+RUN_DIR=/mnt/gs21/scratch/leithers/community-level-selection/${FILE_NAME}/run
+
+# Create the run directory
+mkdir -p ${RUN_DIR}
+# Navigate to run directory, copy over configuration files
+cd ${RUN_DIR}
+cp ${CONFIG_DIR}/*.gen ./
+cp ${CONFIG_DIR}/*.cfg ./
+cp ${CONFIG_DIR}/*.json ./
+cp ${CONFIG_DIR}/${EXEC} ./
+
+# Run the experiment
+RUN_PARAMS="-ANCESTOR_FILE ancestor-100.gen -AVIDAGP_ENV_FILE environment-big.json -ELITE_SEL_NUM_ELITES 1 -EPOCHS 100 -LOCAL_GRID_HEIGHT 25 -LOCAL_GRID_WIDTH 25 -NUM_POPS 8 -OUTPUT_PHYLOGENY_SNAPSHOT_EPOCH_RESOLUTION 100 -OUTPUT_SUMMARY_UPDATE_RESOLUTION 100 -POPULATION_SAMPLING_METHOD random -POPULATION_SAMPLING_SIZE 10 -SEED 420 -SELECTION_METHOD elite -TOURNAMENT_SEL_TOURN_SIZE 4 -UPDATES_PER_EPOCH 100"
+echo "./${EXEC} ${RUN_PARAMS}" > cmd.log
+./${EXEC} ${RUN_PARAMS} > run.log
+
+# Cleanup the executable (and anything else we don't need hanging out)
+rm ${RUN_DIR}/${EXEC}
