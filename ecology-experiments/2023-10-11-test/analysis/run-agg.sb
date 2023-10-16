@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --time=2:00:00
-#SBATCH --account=devolab
+#SBATCH --account=ecode
 ###############################################################
 
 PROJECT_SLUG=2023-10-11-test

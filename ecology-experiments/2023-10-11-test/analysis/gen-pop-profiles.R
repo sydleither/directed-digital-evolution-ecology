@@ -3,15 +3,15 @@
 library(tidyverse)
 library(ggplot2)
 library(GGally)
-library(ggpcp)
+#library(ggpcp)
 library(cowplot)
 library(RColorBrewer)
 library(scales)
 library(viridis)
 
-slug <- "2021-11-11-selection"
-data_dir <- paste0("/home/amlalejini/devo_ws/directed-digital-evolution/experiments/",slug,"/analysis/data/")
-dump_dir <- paste0("/home/amlalejini/devo_ws/directed-digital-evolution/experiments/",slug,"/analysis/plots/")
+slug <- "2023-10-11-test"
+data_dir <- paste0("/mnt/home/leithers/community_level_selection/directed-digital-evolution-ecology/ecology-experiments/",slug,"/analysis/data/")
+dump_dir <- paste0("/mnt/home/leithers/community_level_selection/directed-digital-evolution-ecology/ecology-experiments/",slug,"/analysis/plots/")
 
 
 # Configure our default graphing theme

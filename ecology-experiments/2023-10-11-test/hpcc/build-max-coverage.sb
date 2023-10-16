@@ -1,0 +1,35 @@
+#!/bin/bash
+
+###############################################################
+#SBATCH --job-name=test_max_coverage
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=4G
+#SBATCH --time=1-0:00
+#SBATCH --account=ecode
+###############################################################
+
+# Modules to load
+module load GCCcore/9.1.0
+
+# Variables
+FILE_NAME=2023-10-11-test
+EXEC=max-coverage
+CONFIG_DIR=/mnt/home/leithers/community_level_selection/directed-digital-evolution-ecology
+RUN_DIR=/mnt/gs21/scratch/leithers/community-level-selection/${FILE_NAME}/max-coverage
+
+# Create the run directory
+mkdir -p ${RUN_DIR}
+# Navigate to run directory, copy over configuration files
+cd ${RUN_DIR}
+cp ${CONFIG_DIR}/experiments/scripts/${EXEC} ./
+cp ${CONFIG_DIR}/ecology-experiments/${FILE_NAME}/analysis/data/population_profiles.csv ./
+
+# Run the experiment
+RUN_PARAMS="-POP_PROFILE_FILE population_profiles.csv -OUTPUT_DIR ${CONFIG_DIR}/ecology-experiments/${FILE_NAME}/analysis/data"
+echo "./${EXEC} ${RUN_PARAMS}" > cmd.log
+./${EXEC} ${RUN_PARAMS} > run.log
+
+# Cleanup the executable (and anything else we don't need hanging out)
+rm ${RUN_DIR}/${EXEC}

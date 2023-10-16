@@ -5,9 +5,9 @@ Supplemental information and data analyses for the initial (baseline) directed e
 ## Overview
 
 ```{r}
-experiment_slug <- "2021-11-11-selection"
+experiment_slug <- "2023-10-11-test"
 
-working_directory <- paste0("experiments/",experiment_slug,"/analysis/")
+working_directory <- "" #paste0("experiments/",experiment_slug,"/analysis/")
 ```
 
 ## Analysis dependencies
@@ -19,7 +19,7 @@ library(tidyverse)
 library(ggplot2)
 library(cowplot)
 library(RColorBrewer)
-library(khroma)
+library(viridis)
 source("https://gist.githubusercontent.com/benmarwick/2a1bb0133ff568cbe28d/raw/fb53bd97121f7f9ce947837ef1a4c65a73bffb3f/geom_flat_violin.R")
 ```
 
@@ -133,8 +133,8 @@ Miscellaneous setup
 # Configure our default graphing theme
 theme_set(theme_cowplot())
 # Palette
-scale_fill_fun <- scale_fill_bright
-scale_color_fun <- scale_color_bright
+scale_fill_fun <- scale_fill_viridis_d
+scale_color_fun <- scale_color_viridis_d
 alpha <- 0.05
 # Create a directory to store plots
 plot_directory <- paste0(working_directory, "plots/")
@@ -272,7 +272,7 @@ max_trait_cov_ot_fig
 
 ggsave(
   plot=max_trait_cov_ot_fig,
-  filename=paste0(plot_directory, "2021-11-11-best-pop-task-cov-ts.pdf"),
+  filename=paste0(plot_directory, "2023-10-11-best-pop-task-cov-ts.pdf"),
   width=10,
   height=6
 )
@@ -326,7 +326,7 @@ max_trait_cov_ot_early_fig <-
 max_trait_cov_ot_early_fig
 
 ggsave(
-  filename=paste0(plot_directory, "2021-11-11-best-pop-task-cov-ts-early.pdf"),
+  filename=paste0(plot_directory, "2023-10-11-best-pop-task-cov-ts-early.pdf"),
   width=10,
   height=6
 )
@@ -400,7 +400,7 @@ total_trait_cov_fig <-
 total_trait_cov_fig
 ggsave(
   plot=total_trait_cov_fig,
-  paste0(plot_directory, "2021-11-11-metapop-task-cov.pdf")
+  paste0(plot_directory, "2023-10-11-metapop-task-cov.pdf")
 )
 ```
 
@@ -470,7 +470,7 @@ metapop_task_cov_ot_fig <-
 metapop_task_cov_ot_fig
 ggsave(
   plot=metapop_task_cov_ot_fig,
-  filename=paste0(plot_directory, "2021-11-11-metapop-task-cov-ts.pdf"),
+  filename=paste0(plot_directory, "2023-10-11-metapop-task-cov-ts.pdf"),
   width=10,
   height=6
 )
@@ -522,7 +522,7 @@ metapop_task_cov_ot_early_fig <-
 metapop_task_cov_ot_early_fig
 
 ggsave(
-  filename=paste0(plot_directory, "2021-11-11-metapop-task-cov-ts-early.pdf"),
+  filename=paste0(plot_directory, "2023-10-11-metapop-task-cov-ts-early.pdf"),
   width=10,
   height=6
 )
@@ -598,7 +598,7 @@ num_pop_task_profiles_fig <-
 num_pop_task_profiles_fig
 ggsave(
   plot=num_pop_task_profiles_fig,
-  paste0(plot_directory, "2021-11-11-num-task-profiles.pdf")
+  paste0(plot_directory, "2023-10-11-num-task-profiles.pdf")
 )
 ```
 
@@ -661,7 +661,7 @@ num_task_profiles_ot_fig <-
 num_task_profiles_ot_fig
 ggsave(
   num_task_profiles_ot_fig,
-  filename=paste0(plot_directory, "2021-11-11-num-task-profiles-ts.png"),
+  filename=paste0(plot_directory, "2023-10-11-num-task-profiles-ts.png"),
   width=10,
   height=6
 )
@@ -712,7 +712,7 @@ task_profile_spread_fig <-
 task_profile_spread_fig
 ggsave(
   plot=task_profile_spread_fig,
-  paste0(plot_directory, "2021-11-11-task-profile-spread.pdf")
+  paste0(plot_directory, "2023-10-11-task-profile-spread.pdf")
 )
 ```
 
@@ -775,7 +775,7 @@ ggplot(
   )
 
 ggsave(
-  paste0(plot_directory, "2021-11-11-task-profile-entropy.pdf")
+  paste0(plot_directory, "2023-10-11-task-profile-entropy.pdf")
 )
 ```
 
@@ -835,7 +835,7 @@ ggplot(
   )
 
 ggsave(
-  filename=paste0(plot_directory, "2021-11-11-pop-trait-profile-entropy-ts.png"),
+  filename=paste0(plot_directory, "2023-10-11-pop-trait-profile-entropy-ts.png"),
   width=10,
   height=6
 )
@@ -886,7 +886,7 @@ ggplot(
   )
 
 ggsave(
-  paste0(plot_directory, "2021-11-11-task-cov-per-n-pops.pdf"),
+  paste0(plot_directory, "2023-10-11-task-cov-per-n-pops.pdf"),
   width=10,
   height=6
 )
@@ -948,7 +948,7 @@ ggplot(
   )
 
 ggsave(
-  paste0(plot_directory, "2021-11-11-task-cov-per-n-pops-alt.pdf"),
+  paste0(plot_directory, "2023-10-11-task-cov-per-n-pops-alt.pdf"),
   width=10,
   height=6
 )
@@ -1002,7 +1002,7 @@ ggplot(
     legend.position="none"
   )
 ggsave(
-  paste0(plot_directory, "2021-11-11-num-selected.pdf")
+  paste0(plot_directory, "2023-10-11-num-selected.pdf")
 )
 ```
 
@@ -1094,7 +1094,7 @@ ggplot(
   )
 
 ggsave(
-  paste0(plot_directory, "2021-11-11-num-orgs.pdf")
+  paste0(plot_directory, "2023-10-11-num-orgs.pdf")
 )
 ```
 
@@ -1141,7 +1141,7 @@ ggplot(
   )
 
 ggsave(
-  paste0(plot_directory, "2021-11-11-avg-gens.pdf")
+  paste0(plot_directory, "2023-10-11-avg-gens.pdf")
 )
 
 median(exp_summary_data$total_gens_approx) # Used for determining how many generations to run EC for
@@ -1211,7 +1211,7 @@ grid <- plot_grid(
 grid
 
 save_plot(
-  filename=paste0(plot_directory, "2021-11-11-selection-figure.pdf"),
+  filename=paste0(plot_directory, "2023-10-11-selection-figure.pdf"),
   plot=grid,
   base_height=5,
   base_asp=2.5,
@@ -1221,7 +1221,7 @@ save_plot(
 
 With time series:
 
-```{r}
+```{r, eval=FALSE}
 legend <- cowplot::get_legend(
     max_trait_cov_ot_fig +
       guides(
@@ -1329,7 +1329,7 @@ grid <- plot_grid(
 grid
 
 save_plot(
-  filename=paste0(plot_directory, "2021-11-11-selection-figure-with-timeseries.pdf"),
+  filename=paste0(plot_directory, "2023-10-11-selection-figure-with-timeseries.pdf"),
   plot=grid,
   base_width=12,
   base_height=10,
