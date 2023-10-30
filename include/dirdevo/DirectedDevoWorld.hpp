@@ -300,7 +300,7 @@ public:
   void RunStep();
 
   /// Sydney: run world one step (update) forward and return how many offspring each organism had
-  std::map<size_t, int> RunStepWithOffspringTracking();
+  std::map<typename emp::World<ORG>::genome_t, size_t> RunStepWithOffspringTracking();
 
   /// Evaluate the world (make sure task performance is current)
   void Evaluate();
@@ -437,8 +437,8 @@ void DirectedDevoWorld<ORG,TASK>::RunStep() {
 
 //Sydney
 template<typename ORG, typename TASK>
-std::map<size_t, int> DirectedDevoWorld<ORG,TASK>::RunStepWithOffspringTracking() {
-  std::map<size_t, int> num_offspring;
+std::map<typename emp::World<ORG>::genome_t, size_t> DirectedDevoWorld<ORG,TASK>::RunStepWithOffspringTracking() {
+  std::map<typename emp::World<ORG>::genome_t, size_t> num_offspring;
 
   // Tell task that we're about to run an update
   task.OnBeforeWorldUpdate(GetUpdate());
@@ -447,7 +447,7 @@ std::map<size_t, int> DirectedDevoWorld<ORG,TASK>::RunStepWithOffspringTracking(
   const size_t num_orgs = this->GetNumOrgs();
   extinct = !(bool)num_orgs;
   if (extinct) {
-    return num_offspring;  // Sydney: If there are no organisms alive, return empty map.
+    return num_offspring;  // If there are no organisms alive, return empty map.
   }
 
   // --- Beyond this point: assume that the scheduler weights are current and up-to-date ---
@@ -464,13 +464,14 @@ std::map<size_t, int> DirectedDevoWorld<ORG,TASK>::RunStepWithOffspringTracking(
     task.AfterOrgProcessStep(org);
     // Should organism reproduce?
     if (org.GetReproReady()) {
-      auto offspring_pos = this->DoBirth(org.GetGenome(), org_id, 1);
-      // If org_id is not in the num_offspring map, add it, else add 1
-      if(num_offspring.find(org_id) == num_offspring.end()){
-          num_offspring.insert({org_id, 1});
+      typename emp::World<ORG>::genome_t & org_genome = org.GetGenome();
+      auto offspring_pos = this->DoBirth(org_genome, org_id, 1);
+      // If org_genome is not in the num_offspring map, add it, else add 1
+      if(num_offspring.find(org_genome) == num_offspring.end()){
+          num_offspring.insert({org_genome, 1});
       }
       else{
-        num_offspring[org_id] += 1;
+        num_offspring[org_genome] += 1;
       }
       // If this organism's offspring stomped all over it, we should jump over to the next iteration of the loop
       if (offspring_pos.GetIndex() == org_id) continue;

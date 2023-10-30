@@ -1,0 +1,3 @@
+# 2023-10-13 - Add offspring tracking to experiment
+
+Added offspring tracking to DirectedDevoExperiment.hpp and DirectedDevoWorld.hpp. The offspring tracking creates a new copy of the world at the end of epoch (before selection), runs 100 steps of the world copy, and then saves how many offspring each genome had in the world copy throughout the 100 steps. Similar logic will eventually be used for interaction matrix tracking.

@@ -115,6 +115,10 @@ protected:
   std::unordered_set<size_t> live_worlds;           ///< Set of worlds that are not extinct.
   emp::vector<size_t> population_sample_order;
 
+  std::map<size_t, std::map<typename emp::World<ORG>::genome_t, size_t>> offspring_count; // Sydney: store offspring count map for data file
+  size_t offspring_world_id; // Sydney: for data file
+  size_t offspring_update; // Sydney: for data file
+
   size_t max_world_size=0;
   bool setup=false;
   size_t cur_epoch=0;
@@ -123,6 +127,7 @@ protected:
   emp::Ptr<world_aware_data_file_t> world_summary_file=nullptr;     ///< Manages world update summary output. (is updated during world updates; for each world)
   emp::Ptr<emp::DataFile> world_evaluation_file=nullptr;  ///< Manages world evaluation output. (is updated after each world's evaluation)
   emp::Ptr<emp::DataFile> world_systematics_file=nullptr; ///<
+  emp::Ptr<emp::DataFile> offspring_count_file=nullptr; ///< Sydney: tracks offspring counts from test environment
 
   std::string output_dir;                     ///< Formatted output directory
 
@@ -183,6 +188,7 @@ public:
     if (world_summary_file) world_summary_file.Delete();
     if (world_evaluation_file) world_evaluation_file.Delete();
     if (world_systematics_file) world_systematics_file.Delete();
+    if (offspring_count_file) offspring_count_file.Delete();
 
     // Clean up any undeleted propagule organism pointers
     for (propagule_t& propagule : propagules) {
@@ -438,6 +444,7 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::SetupDataCol
     if (world_summary_file) world_summary_file.Delete();
     if (world_evaluation_file) world_evaluation_file.Delete();
     if (world_systematics_file) world_systematics_file.Delete();
+    if (offspring_count_file) offspring_count_file.Delete();
   } else {
     mkdir(output_dir.c_str(), ACCESSPERMS);
     if(output_dir.back() != '/') {
@@ -447,6 +454,36 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::SetupDataCol
 
   // Generally useful functions
   std::function<size_t(void)> get_epoch = [this]() { return cur_epoch; };
+
+  // Sydney: track offspring
+  offspring_count_file = emp::NewPtr<emp::DataFile>(output_dir + "offspring_count.csv");
+  offspring_count_file->AddVar(cur_epoch, "epoch");
+  offspring_count_file->AddVar(offspring_world_id, "world");
+  offspring_count_file->AddFun<std::string>(
+    [this]() {
+      std::ostringstream stream;
+      stream << "\"[";
+      for (size_t i=0; i < offspring_count[offspring_world_id].size(); i++) {
+        stream << i << " ";
+      }
+      stream << "]\"";
+      return stream.str();
+    },
+    "species"
+  );
+  offspring_count_file->AddFun<std::string>(
+    [this]() {
+      std::ostringstream stream;
+      stream << "\"[";
+      for (auto& [organism, offspring] : offspring_count[offspring_world_id]) {
+        stream << offspring << " ";
+      }
+      stream << "]\"";
+      return stream.str();
+    },
+    "offspring"
+  );
+  offspring_count_file->PrintHeaderKeys();
 
   //////////////////////////////////
   // WORLD UPDATE SUMMARY
@@ -742,16 +779,7 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
   std::function<void(size_t)> run_world = [this](size_t world_id) {
     worlds[world_id]->SetEpoch(cur_epoch);
     for (size_t u = 0; u <= config.UPDATES_PER_EPOCH(); u++) {
-      if (u == config.UPDATES_PER_EPOCH()) { //Sydney
-        std::map<size_t, int> offspring = worlds[world_id]->RunStepWithOffspringTracking();
-        std::cout << "  " << worlds[world_id]->GetName() << std::endl;
-        for(auto& [key, val] : offspring){
-          std::cout << "    " << key << " " << val << std::endl;
-        }
-      }
-      else {
-        worlds[world_id]->RunStep();
-      }
+      worlds[world_id]->RunStep();
       worlds[world_id]->Update();
     }
   };
@@ -807,6 +835,47 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
     }
     ///////////////////////////////////////////////
     #endif //DIRDEVO_THREADING
+
+    // Sydney: count offspring in test scenario
+    offspring_count.clear();
+    for (size_t world_id = 0; world_id < worlds.size(); ++world_id) {
+      offspring_world_id = world_id;
+
+      //create world copy
+      emp::Ptr<world_t> world_copy = emp::NewPtr<world_t>(
+        config,
+        #ifdef DIRDEVO_THREADING
+        world_rngs[world_id],
+        #else
+        random,
+        #endif // DIRDEVO_THREADING
+        "world_"+emp::to_string(world_id),
+        world_id
+      );
+      world_copy->SetAvgOrgStepsPerUpdate(config.AVG_STEPS_PER_ORG());
+      world_copy->SetMutFun([this, world_id](org_t & org, emp::Random& rnd) {
+        return mutators[world_id].Mutate(org.GetGenome(), rnd);
+      });
+      for (size_t i=0; i < worlds[world_id]->GetSize(); i++) {
+        if (worlds[world_id]->IsOccupied(i)) {
+          world_copy->InjectAt(worlds[world_id]->GetOrg(i).GetGenome(), i);
+        }
+      }
+
+      //track offspring across steps
+      for (size_t u = 0; u < 100; u++) {
+        std::map<typename emp::World<ORG>::genome_t, size_t> offspring_u = world_copy->RunStepWithOffspringTracking();
+        for(auto& [key, val] : offspring_u) {
+          if(offspring_count[world_id].find(key) == offspring_count[world_id].end()) {
+              offspring_count[world_id].insert({key, offspring_u[key]});
+          }
+          else{
+            offspring_count[world_id][key] += offspring_u[key];
+          }
+        }
+      }
+      offspring_count_file->Update();
+    }
 
     // Do evaluation (could move this into previous loop if I don't add anything else here that requires all worlds to have been run)
     for (size_t world_id = 0; world_id < worlds.size(); ++world_id) {
