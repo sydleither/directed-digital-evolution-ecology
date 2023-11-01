@@ -874,6 +874,8 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
           }
         }
       }
+
+      world_copy.Delete();
       offspring_count_file->Update();
     }
 
