@@ -450,37 +450,36 @@ std::map<typename emp::World<ORG>::genome_t, size_t> DirectedDevoWorld<ORG,TASK>
     return num_offspring;  // If there are no organisms alive, return empty map.
   }
 
-  // --- Beyond this point: assume that the scheduler weights are current and up-to-date ---
-  // Compute how many organism steps we can dish out for this world update!
-  const size_t org_step_budget = num_orgs*avg_org_steps_per_update;
-  for (size_t step = 0; step < org_step_budget; ++step) {
-    // Schedule someone to take a step.
-    emp_assert(scheduler.GetWeightMap().GetWeight() > 0, step, this->GetNumOrgs());
-    const size_t org_id = scheduler.GetRandom(); // This should reweight the scheduler automatically.
-    auto & org = this->GetOrg(org_id);
-    // Step organism forward
-    task.BeforeOrgProcessStep(org);
-    org.ProcessStep(*this);
-    task.AfterOrgProcessStep(org);
-    // Should organism reproduce?
-    if (org.GetReproReady()) {
-      typename emp::World<ORG>::genome_t & org_genome = org.GetGenome();
-      auto offspring_pos = this->DoBirth(org_genome, org_id, 1);
-      // If org_genome is not in the num_offspring map, add it, else add 1
-      if(num_offspring.find(org_genome) == num_offspring.end()){
-          num_offspring.insert({org_genome, 1});
+  // Every cell gets 100 steps
+  for (size_t i = 0; i < 100; i++) {
+    for (size_t step = 0; step < this->GetSize(); ++step) {
+      if (this->IsOccupied(step)) {
+        auto & org = this->GetOrg(step);
+        // Step organism forward
+        task.BeforeOrgProcessStep(org);
+        org.ProcessStep(*this);
+        task.AfterOrgProcessStep(org);
+        // Should organism reproduce?
+        if (org.GetReproReady()) {
+          typename emp::World<ORG>::genome_t & org_genome = org.GetGenome();
+          auto offspring_pos = this->DoBirth(org_genome, step, 1);
+          // If org_genome is not in the num_offspring map, add it, else add 1
+          if(num_offspring.find(org_genome) == num_offspring.end()){
+              num_offspring.insert({org_genome, 1});
+          }
+          else{
+            num_offspring[org_genome] += 1;
+          }
+          // If this organism's offspring stomped all over it, we should jump over to the next iteration of the loop
+          if (offspring_pos.GetIndex() == step) continue;
+        }
+        // should this organism die?
+        if (org.GetDead()) {
+          this->DoDeath({step});
+          // if everything is dead, break out of this loop
+          if (!this->GetNumOrgs()) break;
+        }
       }
-      else{
-        num_offspring[org_genome] += 1;
-      }
-      // If this organism's offspring stomped all over it, we should jump over to the next iteration of the loop
-      if (offspring_pos.GetIndex() == org_id) continue;
-    }
-    // should this organism die?
-    if (org.GetDead()) {
-      this->DoDeath({org_id});
-      // if everything is dead, break out of this loop
-      if (!this->GetNumOrgs()) break;
     }
   }
 
