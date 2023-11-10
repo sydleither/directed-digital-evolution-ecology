@@ -116,7 +116,7 @@ protected:
   emp::vector<size_t> population_sample_order;
 
   std::map<typename emp::World<ORG>::genome_t, size_t> genomes_seen; // Sydney: store genomes for data file
-  std::map<typename emp::World<ORG>::genome_t, size_t> offspring_count; // Sydney: store offspring count map for data file
+  std::map<typename emp::World<ORG>::genome_t, float> offspring_count; // Sydney: store offspring count map for data file
   size_t offspring_world_id; // Sydney: for data file
   size_t offspring_replicate; // Sydney: for data file
 
@@ -838,71 +838,59 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
     ///////////////////////////////////////////////
     #endif //DIRDEVO_THREADING
 
-    // Sydney: count offspring in test scenario
-    if (cur_epoch == 0){
-    for (size_t world_id = 0; world_id < worlds.size(); ++world_id) {
-      offspring_world_id = world_id;
+    // Sydney: calculate fitness in test scenario
+    if (cur_epoch == 99) { // TEMP
+      for (size_t world_id = 0; world_id < worlds.size(); ++world_id) {
+        offspring_world_id = world_id;
 
-      for (size_t rep = 0; rep < 10; rep++) {
-        offspring_count.clear();
-        offspring_replicate = rep;
+        for (size_t rep = 0; rep < 10; rep++) {
+          offspring_count.clear();
+          offspring_replicate = rep;
 
-        //create world copy
-        emp::Ptr<world_t> world_copy = emp::NewPtr<world_t>(
-          config,
-          #ifdef DIRDEVO_THREADING
-          world_rngs[world_id],
-          #else
-          random,
-          #endif // DIRDEVO_THREADING
-          "world_"+emp::to_string(world_id),
-          world_id
-        );
-        world_copy->SetAvgOrgStepsPerUpdate(config.AVG_STEPS_PER_ORG());
-        world_copy->SetMutFun([this, world_id](org_t & org, emp::Random& rnd) {
-          return mutators[world_id].Mutate(org.GetGenome(), rnd);
-        });
+          //create world copy
+          emp::Ptr<world_t> world_copy = emp::NewPtr<world_t>(
+            config,
+            #ifdef DIRDEVO_THREADING
+            world_rngs[world_id],
+            #else
+            random,
+            #endif
+            "world_"+emp::to_string(world_id),
+            world_id
+          );
 
-        std::map<typename emp::World<ORG>::genome_t, size_t> initial_genomes;
-        for (size_t i=0; i < worlds[world_id]->GetSize(); i++) {
-          if (worlds[world_id]->IsOccupied(i)) {
-            typename emp::World<ORG>::genome_t org_genome = worlds[world_id]->GetOrg(i).GetGenome();
-            world_copy->InjectAt(org_genome, i);
-            if (initial_genomes.find(org_genome) == initial_genomes.end()) {
-                initial_genomes.insert({org_genome, 1});
-            }
-            else{
-              initial_genomes[org_genome] += 1;
-            }
-            if (genomes_seen.find(org_genome) == genomes_seen.end()) {
-              genomes_seen.insert({org_genome, genomes_seen.size()});
+          //populate world copy with only unique genomes
+          std::map<typename emp::World<ORG>::genome_t, size_t> initial_genomes;
+          for (size_t i=0; i < worlds[world_id]->GetSize(); i++) {
+            if (worlds[world_id]->IsOccupied(i)) {
+              typename emp::World<ORG>::genome_t org_genome = worlds[world_id]->GetOrg(i).GetGenome();
+              if (initial_genomes.find(org_genome) == initial_genomes.end()) {
+                  initial_genomes.insert({org_genome, 1});
+                  world_copy->InjectAt(org_genome, i);
+              }
+              else{
+                initial_genomes[org_genome] += 1;
+              }
+              if (genomes_seen.find(org_genome) == genomes_seen.end()) {
+                genomes_seen.insert({org_genome, genomes_seen.size()});
+              }
             }
           }
-        }
 
-        //track offspring across steps
-        for (size_t u = 0; u < 100; u++) {
-          std::map<typename emp::World<ORG>::genome_t, size_t> offspring_u = world_copy->RunStepWithOffspringTracking();
+          //get fitnesses of genomes
+          offspring_count = world_copy->RunFitnessTracking();
+
+          //check if any genomes didn't have their fitness recorded
           for (auto& [key, val] : initial_genomes) {
             if (offspring_count.find(key) == offspring_count.end()) {
-              offspring_count.insert({key, offspring_u[key]});
-            }
-            else{
-              offspring_count[key] += offspring_u[key];
+              offspring_count.insert({key, 0});
             }
           }
-        }
 
-        for (auto& [key, val] : initial_genomes) {
-          if (offspring_count.find(key) == offspring_count.end()) {
-            offspring_count.insert({key, 0});
-          }
+          world_copy.Delete();
+          offspring_count_file->Update();
         }
-
-        world_copy.Delete();
-        offspring_count_file->Update();
       }
-    }
     }
 
     // Do evaluation (could move this into previous loop if I don't add anything else here that requires all worlds to have been run)

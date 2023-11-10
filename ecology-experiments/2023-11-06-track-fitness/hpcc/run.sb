@@ -1,0 +1,38 @@
+#!/bin/bash
+
+###############################################################
+#SBATCH --job-name=fitness_tracking
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=4G
+#SBATCH --time=1-0:00
+#SBATCH --account=ecode
+###############################################################
+
+# Modules to load
+module load GCCcore/9.1.0
+
+# Variables
+FILE_NAME=2023-11-06-track-fitness
+EXEC=directed-digital-evolution
+CONFIG_DIR=/mnt/home/leithers/community_level_selection/directed-digital-evolution-ecology/ecology-experiments/${FILE_NAME}/hpcc/config
+RUN_DIR=/mnt/gs21/scratch/leithers/community-level-selection/${FILE_NAME}/lexicase
+
+# Create the run directory
+mkdir -p ${RUN_DIR}
+# Navigate to run directory, copy over configuration files
+cd ${RUN_DIR}
+cp ${CONFIG_DIR}/*.gen ./
+cp ${CONFIG_DIR}/*.cfg ./
+cp ${CONFIG_DIR}/*.json ./
+cp ${CONFIG_DIR}/${EXEC} ./
+
+# Copy relevant code that generated these results in case I want to reference it later
+cp /mnt/home/leithers/community_level_selection/directed-digital-evolution-ecology/include/dirdevo/DirectedDevoExperiment.hpp ./
+cp /mnt/home/leithers/community_level_selection/directed-digital-evolution-ecology/include/dirdevo/DirectedDevoWorld.hpp ./
+
+# Run the experiment
+RUN_PARAMS="-ANCESTOR_FILE ancestor-100.gen -AVIDAGP_ENV_FILE environment-big.json -EPOCHS 500 -LOCAL_GRID_HEIGHT 20 -LOCAL_GRID_WIDTH 20 -NUM_POPS 8 -OUTPUT_PHYLOGENY_SNAPSHOT_EPOCH_RESOLUTION 100 -OUTPUT_SUMMARY_UPDATE_RESOLUTION 100 -POPULATION_SAMPLING_SIZE 10 -SEED 420 -SELECTION_METHOD lexicase -UPDATES_PER_EPOCH 200"
+echo "./${EXEC} ${RUN_PARAMS}" > cmd.log
+./${EXEC} ${RUN_PARAMS} > run.log

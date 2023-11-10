@@ -378,7 +378,22 @@ public:
       parent.GetHardware().GetInputBuffer(pathway_id) = pathway.env_bank->GetEnvironment(parent_env_id).input_buffer;
 
     }
+  }
 
+  /// Sydney
+  void OnOffspringReadyNoOffspring(org_t& parent) {
+    const double merit = calc_merit_fun(parent);
+    emp_assert(merit > 0, merit, parent.GetMerit());
+    parent.GetPhenotype().Reset(total_tasks);
+    parent.SetMerit(merit);
+
+    // Parent gets reset, but doesn't get placed again (no OnPlacement sig). Need to give it a new environment and reset its input buffer.
+    for (size_t pathway_id = 0; pathway_id < task_pathways.size(); ++pathway_id) {
+      auto& pathway = task_pathways[pathway_id];
+      const size_t parent_env_id = world.GetRandom().GetUInt(pathway.env_bank->GetSize());
+      parent.GetHardware().SetEnvID(pathway_id, parent_env_id);
+      parent.GetHardware().GetInputBuffer(pathway_id) = pathway.env_bank->GetEnvironment(parent_env_id).input_buffer;
+    }
   }
 
   /// Called when org is being placed (@ position) in the world
