@@ -115,10 +115,9 @@ protected:
   std::unordered_set<size_t> live_worlds;           ///< Set of worlds that are not extinct.
   emp::vector<size_t> population_sample_order;
 
-  std::map<typename emp::World<ORG>::genome_t, size_t> genomes_seen; // Sydney: store genomes for data file
-  std::map<typename emp::World<ORG>::genome_t, float> offspring_count; // Sydney: store offspring count map for data file
-  size_t offspring_world_id; // Sydney: for data file
-  size_t offspring_replicate; // Sydney: for data file
+  emp::map<typename emp::World<ORG>::genome_t, size_t> genomes_seen; // Sydney: store genomes for mapping ids
+  emp::map<size_t, emp::map<size_t, float>> interaction_matrix; // Sydney: store interaction matrix for a given world_id and epoch
+  size_t interaction_matrix_world_id; // Sydney: for data file
 
   size_t max_world_size=0;
   bool setup=false;
@@ -128,7 +127,7 @@ protected:
   emp::Ptr<world_aware_data_file_t> world_summary_file=nullptr;     ///< Manages world update summary output. (is updated during world updates; for each world)
   emp::Ptr<emp::DataFile> world_evaluation_file=nullptr;  ///< Manages world evaluation output. (is updated after each world's evaluation)
   emp::Ptr<emp::DataFile> world_systematics_file=nullptr; ///<
-  emp::Ptr<emp::DataFile> offspring_count_file=nullptr; ///< Sydney: tracks offspring counts from test environment
+  emp::Ptr<emp::DataFile> interaction_matrices_file=nullptr; ///< Sydney: stores interaction matrices
 
   std::string output_dir;                     ///< Formatted output directory
 
@@ -189,7 +188,7 @@ public:
     if (world_summary_file) world_summary_file.Delete();
     if (world_evaluation_file) world_evaluation_file.Delete();
     if (world_systematics_file) world_systematics_file.Delete();
-    if (offspring_count_file) offspring_count_file.Delete();
+    if (interaction_matrices_file) interaction_matrices_file.Delete(); // Sydney
 
     // Clean up any undeleted propagule organism pointers
     for (propagule_t& propagule : propagules) {
@@ -212,6 +211,9 @@ public:
   /// Note that RunStep does not take into account epochs or updates per epoch.
   /// - Used primarily for testing and the web interface. Use Run to run the experiment.
   void RunStep();
+
+  /// Sydney
+  emp::map<typename emp::World<ORG>::genome_t, float> GetWorldFitnesses(emp::map<typename emp::World<ORG>::genome_t, size_t> unique_genomes, size_t world_id, size_t remove_cell);
 
   peripheral_t& GetPeripheral() { return peripheral; }
   const peripheral_t& GetPeripheral() const { return peripheral; }
@@ -445,7 +447,7 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::SetupDataCol
     if (world_summary_file) world_summary_file.Delete();
     if (world_evaluation_file) world_evaluation_file.Delete();
     if (world_systematics_file) world_systematics_file.Delete();
-    if (offspring_count_file) offspring_count_file.Delete();
+    if (interaction_matrices_file) interaction_matrices_file.Delete(); // Sydney
   } else {
     mkdir(output_dir.c_str(), ACCESSPERMS);
     if(output_dir.back() != '/') {
@@ -456,36 +458,34 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::SetupDataCol
   // Generally useful functions
   std::function<size_t(void)> get_epoch = [this]() { return cur_epoch; };
 
-  // Sydney: track offspring
-  offspring_count_file = emp::NewPtr<emp::DataFile>(output_dir + "offspring_count.csv");
-  offspring_count_file->AddVar(cur_epoch, "epoch");
-  offspring_count_file->AddVar(offspring_world_id, "world");
-  offspring_count_file->AddVar(offspring_replicate, "replicate");
-  offspring_count_file->AddFun<std::string>(
+  // Sydney: save interaction matrices
+  interaction_matrices_file = emp::NewPtr<emp::DataFile>(output_dir + "interaction_matrices.csv");
+  interaction_matrices_file->AddVar(cur_epoch, "epoch");
+  interaction_matrices_file->AddVar(interaction_matrix_world_id, "world");
+  interaction_matrices_file->AddFun<std::string>(
     [this]() {
+      size_t i;
+      size_t j = 1;
       std::ostringstream stream;
-      stream << "\"[";
-      for (auto& [organism, offspring] : offspring_count) {
-        stream << genomes_seen[organism] << " ";
+      stream << "\"{";
+      for (auto& [genome_i, genome_i_row] : interaction_matrix) {
+        stream << genome_i << ":{";
+        i = 1;
+        for (auto& [genome_j, interaction] : genome_i_row) {
+          stream << genome_j << ":" << interaction;
+          if (i != genome_i_row.size()) stream << ", ";
+          i++;
+        }
+        stream << "}";
+        if (j != interaction_matrix.size()) stream << ", ";
+        j++;
       }
-      stream << "]\"";
+      stream << "}\"";
       return stream.str();
     },
-    "species"
+    "matrix"
   );
-  offspring_count_file->AddFun<std::string>(
-    [this]() {
-      std::ostringstream stream;
-      stream << "\"[";
-      for (auto& [organism, offspring] : offspring_count) {
-        stream << offspring << " ";
-      }
-      stream << "]\"";
-      return stream.str();
-    },
-    "offspring"
-  );
-  offspring_count_file->PrintHeaderKeys();
+  interaction_matrices_file->PrintHeaderKeys();
 
   //////////////////////////////////
   // WORLD UPDATE SUMMARY
@@ -838,58 +838,41 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
     ///////////////////////////////////////////////
     #endif //DIRDEVO_THREADING
 
-    // Sydney: calculate fitness in test scenario
-    if (cur_epoch == 99) { // TEMP
+    // Sydney: calculate interaction matrix
+    if (cur_epoch == 499) { // TEMP
       for (size_t world_id = 0; world_id < worlds.size(); ++world_id) {
-        offspring_world_id = world_id;
+        interaction_matrix_world_id = world_id;
 
-        for (size_t rep = 0; rep < 10; rep++) {
-          offspring_count.clear();
-          offspring_replicate = rep;
-
-          //create world copy
-          emp::Ptr<world_t> world_copy = emp::NewPtr<world_t>(
-            config,
-            #ifdef DIRDEVO_THREADING
-            world_rngs[world_id],
-            #else
-            random,
-            #endif
-            "world_"+emp::to_string(world_id),
-            world_id
-          );
-
-          //populate world copy with only unique genomes
-          std::map<typename emp::World<ORG>::genome_t, size_t> initial_genomes;
-          for (size_t i=0; i < worlds[world_id]->GetSize(); i++) {
-            if (worlds[world_id]->IsOccupied(i)) {
-              typename emp::World<ORG>::genome_t org_genome = worlds[world_id]->GetOrg(i).GetGenome();
-              if (initial_genomes.find(org_genome) == initial_genomes.end()) {
-                  initial_genomes.insert({org_genome, 1});
-                  world_copy->InjectAt(org_genome, i);
-              }
-              else{
-                initial_genomes[org_genome] += 1;
-              }
-              if (genomes_seen.find(org_genome) == genomes_seen.end()) {
-                genomes_seen.insert({org_genome, genomes_seen.size()});
-              }
+        //get genomes in world
+        emp::map<typename emp::World<ORG>::genome_t, size_t> unique_genomes;
+        for (size_t i=0; i < worlds[world_id]->GetSize(); i++) {
+          if (worlds[world_id]->IsOccupied(i)) {
+            typename emp::World<ORG>::genome_t org_genome = worlds[world_id]->GetOrg(i).GetGenome();
+            if (unique_genomes.find(org_genome) == unique_genomes.end()) {
+              unique_genomes.insert({org_genome, i});
+            }
+            //global mapping of genomes to ids
+            if (genomes_seen.find(org_genome) == genomes_seen.end()) {
+              genomes_seen.insert({org_genome, genomes_seen.size()});
             }
           }
-
-          //get fitnesses of genomes
-          offspring_count = world_copy->RunFitnessTracking();
-
-          //check if any genomes didn't have their fitness recorded
-          for (auto& [key, val] : initial_genomes) {
-            if (offspring_count.find(key) == offspring_count.end()) {
-              offspring_count.insert({key, 0});
-            }
-          }
-
-          world_copy.Delete();
-          offspring_count_file->Update();
         }
+
+        //fill out interaction matrix
+        interaction_matrix.clear();
+        emp::map<typename emp::World<ORG>::genome_t, float> default_fitnesses = GetWorldFitnesses(unique_genomes, world_id, -1);
+        for (auto& [remove_genome, remove_cell] : unique_genomes) {
+          emp::map<typename emp::World<ORG>::genome_t, float> genome_fitnesses = GetWorldFitnesses(unique_genomes, world_id, remove_cell);
+          for (auto& [genome, cell] : unique_genomes) {
+            if (remove_genome == genome) {
+              interaction_matrix[genomes_seen[genome]][genomes_seen[remove_genome]] = 0;
+            }
+            else {
+              interaction_matrix[genomes_seen[genome]][genomes_seen[remove_genome]] = genome_fitnesses[genome] - default_fitnesses[genome];
+            }
+          }
+        }
+        interaction_matrices_file->Update();
       }
     }
 
@@ -1001,6 +984,36 @@ void DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::Run() {
       systematics->Update();
     }
   }
+}
+
+template <typename WORLD, typename ORG, typename MUTATOR, typename TASK, typename PERIPHERAL>
+emp::map<typename emp::World<ORG>::genome_t, float> DirectedDevoExperiment<WORLD, ORG, MUTATOR, TASK, PERIPHERAL>::GetWorldFitnesses(emp::map<typename emp::World<ORG>::genome_t, size_t> unique_genomes, size_t world_id, size_t remove_cell) {
+  //create world copy
+  emp::Ptr<world_t> world_copy = emp::NewPtr<world_t>(
+    config,
+    #ifdef DIRDEVO_THREADING
+    world_rngs[world_id],
+    #else
+    random,
+    #endif
+    "world_"+emp::to_string(world_id),
+    world_id
+  );
+
+  //populate world copy with only unique genomes
+  //position doesn't actually matter because the world is well-mixed
+  for (auto& [genome, cell] : unique_genomes) {
+    if (cell != remove_cell) {
+      world_copy->InjectAt(genome, cell);
+    }
+  }
+
+  //get fitnesses of genomes
+  emp::map<typename emp::World<ORG>::genome_t, float> fitnesses = world_copy->RunFitnessTracking();
+
+  //emp::assert unique_genomes.size() == fitnesses.size()
+  world_copy.Delete();
+  return fitnesses;
 }
 
 template <typename WORLD, typename ORG, typename MUTATOR, typename TASK, typename PERIPHERAL>

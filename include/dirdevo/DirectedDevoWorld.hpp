@@ -486,7 +486,7 @@ std::map<typename emp::World<ORG>::genome_t, float> DirectedDevoWorld<ORG,TASK>:
       const size_t org_cycles = org.GetCPUCyclesPerReplication();
       const float fitness = (double)merit/org_cycles;
       if (ready_for_repro.find(org.GetGenome()) == ready_for_repro.end()) {
-        genome_fitnesses.insert({org.GetGenome(), -999.0});
+        genome_fitnesses.insert({org.GetGenome(), 0.0});
       }
       else {
         genome_fitnesses.insert({org.GetGenome(), fitness});
